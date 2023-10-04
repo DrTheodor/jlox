@@ -1,11 +1,12 @@
-package com.craftinginterpreters.lox
+package com.craftinginterpreters.lox.ast
 
-import java.util.List
+import java.util.Collection
+import com.craftinginterpreters.lox.lexer.Token
 
-Block      : List<Stmt> statements
-Class      : Token name, Expr.Variable superclass, List<Stmt.Function> methods
+Block      : Collection<Stmt> statements
+Class      : Token name, Expr.Variable superclass, Collection<Stmt.Function> methods
 Expression : Expr expression
-Function   : Token name, List<Token> params, List<Stmt> body
+Function   : Token name, Collection<Token> params, Collection<Stmt> body
 If         : Expr condition, Stmt thenBranch, Stmt elseBranch
 Print      : Expr expression
 Return     : Token keyword, Expr value

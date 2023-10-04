@@ -1,10 +1,11 @@
-package com.craftinginterpreters.lox
+package com.craftinginterpreters.lox.ast
 
-import java.util.List
+import java.util.Collection
+import com.craftinginterpreters.lox.lexer.Token
 
 Assign   : Token name, Expr value
 Binary   : Expr left, Token operator, Expr right
-Call     : Expr callee, Token paren, List<Expr> arguments
+Call     : Expr callee, Token paren, Collection<Expr> arguments
 Get      : Expr object, Token name
 Grouping : Expr expression
 Literal  : Object value

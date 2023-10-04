@@ -1,6 +1,8 @@
 package com.craftinginterpreters.lox;
 
 import com.craftinginterpreters.lox.CompilerResolver.VarDef;
+import com.craftinginterpreters.lox.ast.Stmt;
+import com.craftinginterpreters.lox.lexer.Token;
 import lox.LoxNative;
 import org.jetbrains.annotations.Nullable;
 import proguard.classfile.ClassPool;
@@ -26,6 +28,7 @@ import proguard.preverify.CodePreverifier;
 import java.io.DataInputStream;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -42,8 +45,8 @@ import static com.craftinginterpreters.lox.LoxConstants.LOX_INVOKER;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_MAIN_CLASS;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_METHOD;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_NATIVE;
-import static com.craftinginterpreters.lox.TokenType.FUN;
-import static com.craftinginterpreters.lox.TokenType.IDENTIFIER;
+import static com.craftinginterpreters.lox.lexer.TokenType.FUN;
+import static com.craftinginterpreters.lox.lexer.TokenType.IDENTIFIER;
 import static java.util.Collections.emptyList;
 import static proguard.classfile.AccessConstants.FINAL;
 import static proguard.classfile.AccessConstants.PRIVATE;
@@ -62,7 +65,7 @@ public class Compiler {
     private final VariableAllocator allocator = new VariableAllocator(resolver);
 
 
-    public @Nullable ClassPool compile(List<Stmt> program) {
+    public @Nullable ClassPool compile(Collection<Stmt> program) {
         addClass(
             programClassPool,
             lox.LoxCallable.class,

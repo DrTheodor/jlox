@@ -1,5 +1,8 @@
 package com.craftinginterpreters.lox;
 
+import com.craftinginterpreters.lox.lexer.Token;
+import com.craftinginterpreters.lox.util.RuntimeError;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -7,7 +10,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import static com.craftinginterpreters.lox.Lox.runtimeError;
-import static com.craftinginterpreters.lox.TokenType.MINUS;
+import static com.craftinginterpreters.lox.lexer.TokenType.MINUS;
 
 public class Optimizer {
 

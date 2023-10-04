@@ -1,6 +1,7 @@
 package com.craftinginterpreters.lox;
 
 import com.craftinginterpreters.lox.CompilerResolver.VarDef;
+import com.craftinginterpreters.lox.lexer.Token;
 import proguard.classfile.ClassPool;
 import proguard.classfile.editor.CompactCodeAttributeComposer;
 

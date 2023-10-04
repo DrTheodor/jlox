@@ -1,6 +1,7 @@
 package com.craftinginterpreters.lox;
 
 import com.craftinginterpreters.lox.CompilerResolver.VarDef;
+import com.craftinginterpreters.lox.lexer.Token;
 
 import java.util.Comparator;
 import java.util.HashMap;

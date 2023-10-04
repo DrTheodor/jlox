@@ -1,5 +1,9 @@
 package com.craftinginterpreters.lox;
 
+import com.craftinginterpreters.lox.ast.Stmt;
+import com.craftinginterpreters.lox.lexer.Lexer;
+import com.craftinginterpreters.lox.lexer.Scanner;
+import com.craftinginterpreters.lox.parser.Parser;
 import lox.LoxException;
 import proguard.classfile.ClassPool;
 import proguard.classfile.util.ClassPoolClassLoader;
@@ -10,6 +14,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Collection;
 import java.util.List;
 
 import static com.craftinginterpreters.lox.Lox.hadError;
@@ -69,10 +74,10 @@ public class Main {
 
     public static ClassPool compile(String source) {
         try {
-            Scanner scanner = new Scanner(source);
+            Lexer scanner = new Lexer(source);
             Parser parser = new Parser(scanner.scanTokens());
 
-            List<Stmt> statements = parser.parse();
+            Collection<Stmt> statements = parser.parse();
 
             if (hadError)
                 return null;

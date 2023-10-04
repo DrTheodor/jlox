@@ -6,6 +6,8 @@ import dev.drtheo.ast.util.Util;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -20,6 +22,7 @@ public class GenerateAST {
         }
 
         String output = args[0];
+        Files.createDirectories(Paths.get(output));
         for (int i = 1; i < args.length; i++) {
             String inputFile = args[i];
             if (!inputFile.endsWith(".ast"))
@@ -55,7 +58,7 @@ public class GenerateAST {
             }
 
             writer.newline();
-            writer.println("abstract <R> R accept(Visitor<R> visitor)");
+            writer.println("public abstract <R> R accept(Visitor<R> visitor)");
             writer.end();
         }
     }

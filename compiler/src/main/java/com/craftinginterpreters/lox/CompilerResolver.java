@@ -1,26 +1,19 @@
 package com.craftinginterpreters.lox;
 
-import com.craftinginterpreters.lox.Stmt.Function;
+import com.craftinginterpreters.lox.ast.Expr;
+import com.craftinginterpreters.lox.ast.Stmt;
+import com.craftinginterpreters.lox.lexer.Token;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.InvocationTargetException;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.Stack;
-import java.util.WeakHashMap;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.craftinginterpreters.lox.Lox.error;
 import static com.craftinginterpreters.lox.LoxConstants.LOX_MAIN_CLASS;
-import static com.craftinginterpreters.lox.TokenType.SUPER;
-import static com.craftinginterpreters.lox.TokenType.THIS;
+import static com.craftinginterpreters.lox.lexer.TokenType.SUPER;
+import static com.craftinginterpreters.lox.lexer.TokenType.THIS;
 
 public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     public static boolean DEBUG = System.getProperty("jlox.resolver.debug") != null;
@@ -29,15 +22,15 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     private final Map<Token, VarDef> varUse = new WeakHashMap<>();
     private final Map<Token, Integer> writes = new WeakHashMap<>();
     private final Map<Token, Integer> reads = new WeakHashMap<>();
-    private final Stack<Map<VarDef, Boolean>> scopes = new Stack<>();
-    private final Stack<Function> functionStack = new Stack<>();
-    private final Stack<Stmt.Class> classStack = new Stack<>();
+    private final Deque<Map<VarDef, Boolean>> scopes = new ArrayDeque<>();
+    private final Deque<Stmt.Function> functionStack = new ArrayDeque<>();
+    private final Deque<Stmt.Class> classStack = new ArrayDeque<>();
     private final Map<Token, Set<VarDef>> captured = new WeakHashMap<>();
     private final Map<Token, String> javaClassNames = new WeakHashMap<>();
     private final Map<Token, String> javaFieldNames = new WeakHashMap<>();
     private final Set<UnresolvedLocal> unresolved = new HashSet<>();
 
-    public void resolve(Function main) {
+    public void resolve(Stmt.Function main) {
         resolveFunction(main);
 
         if (DEBUG) {
@@ -56,7 +49,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         // Cannot throw errors for unresolved here, since Lox permits unreachable, unresolved variables.
     }
 
-    private void resolve(List<Stmt> stmts) {
+    private void resolve(Collection<Stmt> stmts) {
         stmts.forEach(this::resolve);
     }
 
@@ -68,23 +61,25 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         expr.accept(this);
     }
 
-    private void resolveMethod(Stmt.Class classStmt, Function method) {
-        javaFieldName(method.name, method.name.lexeme);
-        resolveFunction(method, classStmt.name.lexeme);
+    private void resolveMethod(Stmt.Class classStmt, Stmt.Function method) {
+        javaFieldName(method.getName(), method.getName().lexeme());
+        resolveFunction(method, classStmt.getName().lexeme());
     }
 
-    private void resolveFunction(Function function) {
+    private void resolveFunction(Stmt.Function function) {
         resolveFunction(function, "");
     }
 
-    private void resolveFunction(Function function, String namePrefix) {
-        javaClassName(function.name, namePrefix);
+    private void resolveFunction(Stmt.Function function, String namePrefix) {
+        javaClassName(function.getName(), namePrefix);
         beginScope(function);
-        for (Token param : function.params) {
+
+        for (Token param : function.getParams()) {
             var varDef = declare(param, ParameterVarDef.class);
             define(varDef);
         }
-        resolve(function.body);
+
+        resolve(function.getBody());
         endScope(function);
     }
 
@@ -137,16 +132,19 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
                     }
                 }
                 varUse.put(name, varDef.get());
-                if (DEBUG) System.out.println(name.lexeme + "@line" + name.line + " -> " + varDef.get() + "@line" + varDef.get().token().line);
+                if (DEBUG) System.out.println(name.lexeme() + "@line" + name.line() + " -> " + varDef.get() + "@line" + varDef.get().token().line);
                 return varDef;
             }
         }
-        if (DEBUG) System.out.println(varAccess + " undefined");
+
+        if (DEBUG)
+            System.out.println(varAccess + " undefined");
+
         unresolved.add(new UnresolvedLocal(functionStack.peek(), functionStack.size(), varAccess, name));
         return Optional.empty();
     }
 
-    private void beginScope(Function function) {
+    private void beginScope(Stmt.Function function) {
         functionStack.push(function);
         beginScope();
     }
@@ -164,7 +162,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         scopes.pop();
     }
 
-    private void endScope(Function ignoredFunction) {
+    private void endScope(Stmt.Function ignoredFunction) {
         endScope();
         functionStack.pop();
     }
@@ -184,7 +182,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         var scope = scopes.peek();
         var isGlobalScope = scopes.size() == 1;
         var currentFunction = functionStack.peek();
-        var existingVarDef = scope.keySet().stream().filter(it -> it.token().lexeme.equals(name.lexeme)).findFirst();
+        var existingVarDef = scope.keySet().stream().filter(it -> it.token().lexeme().equals(name.lexeme())).findFirst();
 
         if (existingVarDef.isPresent()) {
             if (!isGlobalScope) error(name, "Already a variable with this name in this scope.");
@@ -210,7 +208,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
 
         if (isGlobalScope) {
             var resolved = new HashSet<UnresolvedLocal>();
-            unresolved.stream().filter(it -> it.name.lexeme.equals(name.lexeme)).forEach(it -> {
+            unresolved.stream().filter(it -> it.name.lexeme().equals(name.lexeme())).forEach(it -> {
                 varUse.put(it.name, varDef);
 
                 // Update reads that occurred before declaration
@@ -224,47 +222,49 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             unresolved.removeAll(resolved);
         }
 
-        javaFieldName(varDef.token, varDef.token.lexeme);
+        javaFieldName(varDef.token, varDef.token.lexeme());
 
         return varDef;
     }
 
     private void define(VarDef varDef) {
-        if (scopes.isEmpty()) return;
+        if (scopes.isEmpty())
+            return;
+
         scopes.peek().put(varDef, true);
     }
 
     @Override
     public Void visitAssignExpr(Expr.Assign expr) {
-        resolve(expr.value);
-        var varDef = resolveLocal(expr, expr.name);
+        resolve(expr.getValue());
+        var varDef = resolveLocal(expr, expr.getName());
         varDef.ifPresent(it -> writes.merge(it.token, 1, Integer::sum));
         return null;
     }
 
     @Override
     public Void visitBinaryExpr(Expr.Binary expr) {
-        resolve(expr.left);
-        resolve(expr.right);
+        resolve(expr.getLeft());
+        resolve(expr.getRight());
         return null;
     }
 
     @Override
     public Void visitCallExpr(Expr.Call expr) {
-        resolve(expr.callee);
-        expr.arguments.forEach(this::resolve);
+        resolve(expr.getCallee());
+        expr.getArguments().forEach(this::resolve);
         return null;
     }
 
     @Override
     public Void visitGetExpr(Expr.Get expr) {
-        resolve(expr.object);
+        resolve(expr.getObject());
         return null;
     }
 
     @Override
     public Void visitGroupingExpr(Expr.Grouping expr) {
-        resolve(expr.expression);
+        resolve(expr.getExpression());
         return null;
     }
 
@@ -275,33 +275,33 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
 
     @Override
     public Void visitLogicalExpr(Expr.Logical expr) {
-        resolve(expr.left);
-        resolve(expr.right);
+        resolve(expr.getLeft());
+        resolve(expr.getRight());
         return null;
     }
 
     @Override
     public Void visitSetExpr(Expr.Set expr) {
-        resolve(expr.object);
-        resolve(expr.value);
+        resolve(expr.getObject());
+        resolve(expr.getValue());
         return null;
     }
 
     @Override
     public Void visitSuperExpr(Expr.Super expr) {
-        resolveLocal(expr, expr.keyword);
+        resolveLocal(expr, expr.getKeyword());
         return null;
     }
 
     @Override
     public Void visitThisExpr(Expr.This expr) {
-        resolveLocal(expr, expr.keyword);
+        resolveLocal(expr, expr.getKeyword());
         return null;
     }
 
     @Override
     public Void visitUnaryExpr(Expr.Unary expr) {
-        resolve(expr.right);
+        resolve(expr.getRight());
         return null;
     }
 
@@ -312,28 +312,27 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             .peek()
             .keySet()
             .stream()
-            .anyMatch(it -> it.token.lexeme.equals(expr.name.lexeme));
+            .anyMatch(it -> it.token.lexeme().equals(expr.getName().lexeme()));
 
         if (!isGlobalScope && isAlreadyDeclared) {
             scopes
                 .peek()
                 .entrySet()
                 .stream()
-                .filter(it -> it.getKey().token.lexeme.equals(expr.name.lexeme))
+                .filter(it -> it.getKey().token.lexeme().equals(expr.getName().lexeme()))
                 .map(Map.Entry::getValue)
                 .findAny()
                 .ifPresent(variableIsDefined -> {
                     // Declared and not yet defined - it must be its own initializer!
-                    if (!variableIsDefined) error(expr.name, "Can't read local variable in its own initializer.");
+                    if (!variableIsDefined)
+                        error(expr.getName(), "Can't read local variable in its own initializer.");
                 });
         }
 
-        var varDef = resolveLocal(expr, expr.name);
+        var varDef = resolveLocal(expr, expr.getName());
         varDef.ifPresentOrElse(
             it -> reads.merge(it.token, 1, Integer::sum),
-
-            // Might not have been declared yet (lateinit)
-            () -> reads.put(expr.name, 1)
+            () -> reads.put(expr.getName(), 1)
         );
         return null;
     }
@@ -341,44 +340,49 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     @Override
     public Void visitBlockStmt(Stmt.Block stmt) {
         beginScope();
-        resolve(stmt.statements);
+        resolve(stmt.getStatements());
+
         endScope();
         return null;
     }
 
     @Override
     public Void visitClassStmt(Stmt.Class stmt) {
-        var varDef = declare(stmt.name, ClassVarDef.class);
+        var varDef = declare(stmt.getName(), ClassVarDef.class);
         define(varDef);
 
-        javaClassName(stmt.name, "");
+        javaClassName(stmt.getName(), "");
 
-        if (stmt.superclass != null) resolve(stmt.superclass);
+        if (stmt.getSuperclass() != null)
+            resolve(stmt.getSuperclass());
 
         beginScope(stmt);
+
         define(
             new ThisVarDef(
-            new Token(THIS, "this", null, stmt.name.line), functionStack.peek(), false)
+            new Token(THIS, "this", null, stmt.getName().line()), functionStack.peek(), false)
         );
-        if (stmt.superclass != null)
+
+        if (stmt.getSuperclass() != null)
             define(
                 new SuperVarDef(
-                new Token(SUPER, "super", null, stmt.name.line), functionStack.peek(), false)
+                new Token(SUPER, "super", null, stmt.getName().line()), functionStack.peek(), false)
             );
-        stmt.methods.forEach(method -> resolveMethod(stmt, method));
+
+        stmt.getMethods().forEach(method -> resolveMethod(stmt, method));
         endScope(stmt);
         return null;
     }
 
     @Override
     public Void visitExpressionStmt(Stmt.Expression stmt) {
-        resolve(stmt.expression);
+        resolve(stmt.getExpression());
         return null;
     }
 
     @Override
-    public Void visitFunctionStmt(Function stmt) {
-        var varDef = declare(stmt.name, FunctionVarDef.class);
+    public Void visitFunctionStmt(Stmt.Function stmt) {
+        var varDef = declare(stmt.getName(), FunctionVarDef.class);
         define(varDef);
         resolveFunction(stmt);
         return null;
@@ -386,51 +390,59 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
 
     @Override
     public Void visitIfStmt(Stmt.If stmt) {
-        resolve(stmt.condition);
-        resolve(stmt.thenBranch);
-        if (stmt.elseBranch != null) resolve(stmt.elseBranch);
+        resolve(stmt.getCondition());
+        resolve(stmt.getThenBranch());
+
+        if (stmt.getElseBranch() != null)
+            resolve(stmt.getElseBranch());
+
         return null;
     }
 
     @Override
     public Void visitPrintStmt(Stmt.Print stmt) {
-        resolve(stmt.expression);
+        resolve(stmt.getExpression());
         return null;
     }
 
     @Override
     public Void visitReturnStmt(Stmt.Return stmt) {
-        if (stmt.value != null) resolve(stmt.value);
+        if (stmt.getValue() != null)
+            resolve(stmt.getValue());
+
         return null;
     }
 
     @Override
     public Void visitVarStmt(Stmt.Var stmt) {
-        var varDef = declare(stmt.name);
-        if (stmt.initializer != null) {
-            resolve(stmt.initializer);
-            if (varDef != null) writes.put(varDef.token, 1);
+        var varDef = declare(stmt.getName());
+        if (stmt.getInitializer() != null) {
+            resolve(stmt.getInitializer());
+
+            if (varDef != null)
+                writes.put(varDef.token, 1);
         }
+
         define(varDef);
         return null;
     }
 
     @Override
     public Void visitWhileStmt(Stmt.While stmt) {
-        resolve(stmt.condition);
-        resolve(stmt.body);
+        resolve(stmt.getCondition());
+        resolve(stmt.getBody());
         return null;
     }
 
     public sealed class VarDef permits ClassVarDef, FunctionVarDef, ParameterVarDef, SuperVarDef, ThisVarDef {
 
         protected final Token token;
-        protected final Function function;
+        protected final Stmt.Function function;
         protected final boolean isGlobal;
         protected boolean isLateInit = false;
         private final Map<Token, Integer> captureDepth = new HashMap<>();
 
-        public VarDef(Token token, Function function, Boolean isGlobal) {
+        public VarDef(Token token, Stmt.Function function, Boolean isGlobal) {
             this.token = token;
             this.function = function;
             this.isGlobal = isGlobal;
@@ -438,13 +450,17 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
 
         @Override
         public String toString() {
-            return token.lexeme + "@" + this.function.name.lexeme;
+            return token.lexeme() + "@" + this.function.getName().lexeme();
         }
 
         @Override
         public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
+            if (this == o)
+                return true;
+
+            if (o == null || this.getClass() != o.getClass())
+                return false;
+
             VarDef varDef = (VarDef) o;
             return isGlobal == varDef.isGlobal && isLateInit == varDef.isLateInit && token.equals(varDef.token);
         }
@@ -458,7 +474,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             return token;
         }
 
-        public Function function() {
+        public Stmt.Function function() {
             return function;
         }
 
@@ -466,8 +482,8 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             return captured.values().stream().flatMap(Collection::stream).anyMatch(it -> it == this);
         }
 
-        public int distanceTo(Function function) {
-            return captureDepth.getOrDefault(function.name, 0);
+        public int distanceTo(Stmt.Function function) {
+            return captureDepth.getOrDefault(function.getName(), 0);
         }
 
         public boolean isGlobal() {
@@ -499,30 +515,30 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     }
 
     public final class FunctionVarDef extends VarDef {
-        public FunctionVarDef(Token token, Function function, Boolean isGlobal) {
+        public FunctionVarDef(Token token, Stmt.Function function, Boolean isGlobal) {
             super(token, function, isGlobal);
         }
     }
 
     public final class ParameterVarDef extends VarDef {
-        public ParameterVarDef(Token token, Function function, Boolean isGlobal) {
+        public ParameterVarDef(Token token, Stmt.Function function, Boolean isGlobal) {
             super(token, function, isGlobal);
         }
     }
 
     public final class SuperVarDef extends VarDef {
-        public SuperVarDef(Token token, Function function, Boolean isGlobal) {
+        public SuperVarDef(Token token, Stmt.Function function, Boolean isGlobal) {
             super(token, function, isGlobal);
         }
     }
 
     public final class ThisVarDef extends VarDef {
-        public ThisVarDef(Token token, Function function, Boolean isGlobal) {
+        public ThisVarDef(Token token, Stmt.Function function, Boolean isGlobal) {
             super(token, function, isGlobal);
         }
     }
 
-    public record UnresolvedLocal(Function function, int depth, Expr varAccess, Token name) { }
+    public record UnresolvedLocal(Stmt.Function function, int depth, Expr varAccess, Token name) { }
 
     private void javaClassName(Token token, String prefix) {
         prefix = prefix + functionStack
@@ -530,40 +546,45 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
             .skip(1)
             .map(this::javaClassName)
             .collect(Collectors.joining("$"));
-        var newName = prefix.isBlank() ? token.lexeme : prefix + "$" + token.lexeme;
+
+        var newName = prefix.isBlank() ? token.lexeme() : prefix + "$" + token.lexeme();
         javaClassNames.put(token, newName + (javaClassNames.values().stream().anyMatch(it -> it.equals(newName)) ? "$" : ""));
     }
 
     public String javaClassName(Stmt.Class classStmt) {
-        return javaClassNames.get(classStmt.name);
+        return javaClassNames.get(classStmt.getName());
     }
 
-    public String javaClassName(Function function) {
-        return javaClassNames.get(function.name);
+    public String javaClassName(Stmt.Function function) {
+        return javaClassNames.get(function.getName());
     }
 
     private void javaFieldName(Token token, String name) {
         javaFieldNames.put(token, name + "#" + token.hashCode());
     }
 
-    public String javaFieldName(Function function) {
-        return javaFieldNames.get(function.name);
+    public String javaFieldName(Stmt.Function function) {
+        return javaFieldNames.get(function.getName());
     }
 
-    private void captureThisOrSuper(Function function, VarDef thisOrSuperDef, int depth) {
+    private void captureThisOrSuper(Stmt.Function function, VarDef thisOrSuperDef, int depth) {
         // There's no actual variables, but the depth will be used
         // to get the enclosing instance at the correct distance.
-        thisOrSuperDef.captureDepth.put(function.name, depth);
+        thisOrSuperDef.captureDepth.put(function.getName(), depth);
     }
 
-    private void capture(Function function, VarDef varDef, int depth) {
+    private void capture(Stmt.Function function, VarDef varDef, int depth) {
         var captured = captured(function);
+
         if (!captured.contains(varDef)) {
             captured.add(varDef);
-            varDef.captureDepth.put(function.name, depth);
-            if (DEBUG) System.out.println("capture " + varDef + " in " + function.name.lexeme + " at depth " + depth);
+            varDef.captureDepth.put(function.getName(), depth);
+
+            if (DEBUG)
+                System.out.println("capture " + varDef + " in " + function.getName().lexeme() + " at depth " + depth);
+
             if (varDef instanceof ClassVarDef &&
-                classStack.stream().anyMatch(it -> it.name.equals(varDef.token()))) {
+                classStack.stream().anyMatch(it -> it.getName().equals(varDef.token()))) {
                 // Capturing a self-referencing class
                 // variable means it is used before it's initialized.
                 // For example: test/class/reference_self.lox
@@ -572,23 +593,22 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
         }
     }
 
-    public void decrementReads(VarDef varDef)
-    {
+    public void decrementReads(VarDef varDef) {
         var current = reads.get(varDef.token());
         if (current == 1) reads.remove(varDef.token());
         else reads.replace(varDef.token(), current - 1);
     }
 
     @NotNull
-    public Set<VarDef> captured(Function function) {
-        return captured.computeIfAbsent(function.name, k -> new HashSet<>());
+    public Set<VarDef> captured(Stmt.Function function) {
+        return captured.computeIfAbsent(function.getName(), k -> new HashSet<>());
     }
 
     @NotNull
-    public Set<VarDef> variables(Function function) {
+    public Set<VarDef> variables(Stmt.Function function) {
         return variables.values()
                         .stream()
-                        .filter(it -> it.function.name.equals(function.name))
+                        .filter(it -> it.function.getName().equals(function.getName()))
                         .collect(Collectors.toSet());
     }
 
@@ -608,13 +628,13 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     @NotNull
     public Optional<VarDef> varDef(Expr varAccess) {
         if (varAccess instanceof Expr.Variable v) {
-            return Optional.ofNullable(varUse.get(v.name));
+            return Optional.ofNullable(varUse.get(v.getName()));
         } else if (varAccess instanceof Expr.Assign v) {
-            return Optional.ofNullable(varUse.get(v.name));
+            return Optional.ofNullable(varUse.get(v.getName()));
         } else if (varAccess instanceof Expr.Super v) {
-            return Optional.ofNullable(varUse.get(v.keyword));
+            return Optional.ofNullable(varUse.get(v.getKeyword()));
         } else if (varAccess instanceof Expr.This v) {
-            return Optional.ofNullable(varUse.get(v.keyword));
+            return Optional.ofNullable(varUse.get(v.getKeyword()));
         } else {
             throw new IllegalArgumentException("Invalid varAccess: " + varAccess);
         }
