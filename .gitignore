@@ -4,4 +4,4 @@
 /runtime/build/**
 /.gradle/**
 /craftinginterpreters/**
-build/
+build
