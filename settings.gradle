@@ -5,4 +5,5 @@ plugins {
 rootProject.name = 'jlox'
 include 'compiler'
 include 'runtime'
+include 'ast'
 

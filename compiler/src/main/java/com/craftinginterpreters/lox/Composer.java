@@ -304,23 +304,23 @@ public class Composer<T extends CompactCodeAttributeComposer> extends CompactCod
     }
 
     @Override
-    public void convertToTargetType(String sourceType, String targetType) {
-        delegate.convertToTargetType(sourceType, targetType);
+    public CompactCodeAttributeComposer convertToTargetType(String sourceType, String targetType) {
+        return delegate.convertToTargetType(sourceType, targetType);
     }
 
     @Override
-    public void boxPrimitiveType(char sourceType) {
-        delegate.boxPrimitiveType(sourceType);
+    public CompactCodeAttributeComposer boxPrimitiveType(char sourceType) {
+        return delegate.boxPrimitiveType(sourceType);
     }
 
     @Override
-    public void convertPrimitiveType(char source, char target) {
-        delegate.convertPrimitiveType(source, target);
+    public CompactCodeAttributeComposer convertPrimitiveType(char source, char target) {
+        return delegate.convertPrimitiveType(source, target);
     }
 
     @Override
-    public void unboxPrimitiveType(String sourceType, String targetType) {
-        delegate.unboxPrimitiveType(sourceType, targetType);
+    public CompactCodeAttributeComposer unboxPrimitiveType(String sourceType, String targetType) {
+        return delegate.unboxPrimitiveType(sourceType, targetType);
     }
 
     @Override

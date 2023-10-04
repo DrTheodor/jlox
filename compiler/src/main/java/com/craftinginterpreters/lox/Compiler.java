@@ -63,7 +63,6 @@ public class Compiler {
 
 
     public @Nullable ClassPool compile(List<Stmt> program) {
-
         addClass(
             programClassPool,
             lox.LoxCallable.class,
