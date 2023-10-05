@@ -20,9 +20,8 @@ public class Environment {
     }
 
     public Object get(Token name) {
-        if (values.containsKey(name.lexeme())) {
+        if (values.containsKey(name.lexeme()))
             return values.get(name.lexeme());
-        }
 
         if (enclosing != null)
             return enclosing.get(name);

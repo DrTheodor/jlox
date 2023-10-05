@@ -26,9 +26,8 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             public int arity() { return 0; }
 
             @Override
-            public Object call(Interpreter interpreter,
-                               List<Object> arguments) {
-                return (double)System.currentTimeMillis() / 1000.0;
+            public Object call(Interpreter interpreter, List<Object> arguments) {
+                return (double) System.currentTimeMillis() / 1000.0;
             }
 
             @Override
@@ -54,7 +53,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
         stmt.accept(this);
     }
 
-    void resolve(Expr expr, int depth) {
+    protected void resolve(Expr expr, int depth) {
         locals.put(expr, depth);
     }
 
@@ -121,6 +120,8 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
     @Override
     public Void visitFunctionStmt(Stmt.Function stmt) {
         LoxFunction function = new LoxFunction(stmt, environment, false);
+
+        //FIXME: or here?
         environment.define(stmt.getName().lexeme(), function);
         return null;
     }

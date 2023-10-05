@@ -1,117 +1,105 @@
-//> Parsing Expressions parser
 package com.craftinginterpreters.lox.parser;
 
-//> Statements and State parser-imports
-import com.craftinginterpreters.lox.Lox;
 import com.craftinginterpreters.lox.ast.Expr;
 import com.craftinginterpreters.lox.ast.Stmt;
+import com.craftinginterpreters.lox.interpreter.TokenEnumerator;
 import com.craftinginterpreters.lox.lexer.Token;
-import com.craftinginterpreters.lox.lexer.TokenType;
 
 import java.util.*;
-//< Statements and State parser-imports
-//> Control Flow import-arrays
-//< Control Flow import-arrays
 
 import static com.craftinginterpreters.lox.lexer.TokenType.*;
 
-public class Parser {
-    //> parse-error
-    private static class ParseError extends RuntimeException {}
+public class Parser extends TokenEnumerator {
 
-    //< parse-error
-    private final List<Token> tokens;
-    private int current = 0;
+    private static class ParseError extends RuntimeException { }
 
     public Parser(List<Token> tokens) {
-        this.tokens = tokens;
+        super(tokens);
     }
 
     public Collection<Stmt> parse() {
-        Set<Stmt> statements = new HashSet<>();
+        List<Stmt> statements = new ArrayList<>();
 
-        while (!isAtEnd()) {
-            statements.add(declaration());
+        while (!this.isAtEnd()) {
+            statements.add(this.declaration());
         }
 
         return statements;
     }
 
     private Expr expression() {
-        return assignment();
+        return this.assignment();
     }
 
     private Stmt declaration() {
         try {
-            if (match(CLASS))
-                return classDeclaration();
-            if (match(FUN))
-                return function("function");
-            if (match(VAR))
-                return varDeclaration();
+            if (this.match(CLASS))
+                return this.classDeclaration();
 
-            return statement();
+            if (this.match(FUN))
+                return this.function("function");
+
+            if (this.match(VAR))
+                return this.varDeclaration();
+
+            return this.statement();
         } catch (ParseError error) {
-            synchronize();
+            this.synchronize();
             return null;
         }
     }
 
     private Stmt classDeclaration() {
-        Token name = consume(IDENTIFIER, "Expect class name.");
-
+        Token name = this.consume(IDENTIFIER, "Expect class name.");
         Expr.Variable superclass = null;
-        if (match(LESS)) {
-            consume(IDENTIFIER, "Expect superclass name.");
+
+        if (this.match(LESS)) {
+            this.consume(IDENTIFIER, "Expect superclass name.");
             superclass = new Expr.Variable(previous());
         }
 
-        consume(LEFT_BRACE, "Expect '{' before class body.");
+        this.consume(LEFT_BRACE, "Expect '{' before class body.");
 
         // TODO: add a method/func keyword check somewhere here
         List<Stmt.Function> methods = new ArrayList<>();
-        while (!check(RIGHT_BRACE) && !isAtEnd()) {
-            methods.add(function("method"));
+        while (!this.check(RIGHT_BRACE) && !this.isAtEnd()) {
+            methods.add(this.function("method"));
         }
 
-        consume(RIGHT_BRACE, "Expect '}' after class body.");
-
+        this.consume(RIGHT_BRACE, "Expect '}' after class body.");
         return new Stmt.Class(name, superclass, methods);
     }
 
     private Stmt statement() {
-        if (match(FOR))
-            return forStatement();
+        if (this.match(FOR))
+            return this.forStatement();
 
-        if (match(IF))
-            return ifStatement();
+        if (this.match(IF))
+            return this.ifStatement();
 
-        if (match(PRINT))
-            return printStatement();
+        if (this.match(PRINT))
+            return this.printStatement();
 
-        if (match(RETURN))
-            return returnStatement();
+        if (this.match(RETURN))
+            return this.returnStatement();
 
-        if (match(WHILE))
-            return whileStatement();
+        if (this.match(WHILE))
+            return this.whileStatement();
 
         if (match(LEFT_BRACE))
-            return new Stmt.Block(block());
+            return new Stmt.Block(this.block());
 
-        return expressionStatement();
+        return this.expressionStatement();
     }
 
     private Stmt forStatement() {
-        consume(LEFT_PAREN, "Expect '(' after 'for'.");
+        this.consume(LEFT_PAREN, "Expect '(' after 'for'.");
 
-        Stmt initializer;
-        if (match(SEMICOLON)) {
-            initializer = null;
-        } else if (match(VAR)) {
-            initializer = varDeclaration();
-        } else {
-            initializer = expressionStatement();
-        }
+        Stmt initializer = this.match((token) -> switch (token.type()) {
+            case SEMICOLON -> null;
+            case VAR -> this.varDeclaration();
+            default -> this.expressionStatement();
+        }, SEMICOLON);
 
         Expr condition = null;
         if (!check(SEMICOLON)) {
@@ -214,7 +202,7 @@ public class Parser {
         if (!check(RIGHT_PAREN)) {
             do {
                 if (parameters.size() >= 255) {
-                    error(peek(), "Can't have more than 255 parameters.");
+                    throw error("Can't have more than 255 parameters.");
                 }
 
                 parameters.add(consume(IDENTIFIER, "Expect parameter name."));
@@ -251,7 +239,7 @@ public class Parser {
                 return new Expr.Set(get.getObject(), get.getName(), value);
             }
 
-            error(equals, "Invalid assignment target.");
+            throw error(equals, "Invalid assignment target.");
         }
 
         return expr;
@@ -344,7 +332,7 @@ public class Parser {
         if (!check(RIGHT_PAREN)) {
             do {
                 if (arguments.size() >= 255) {
-                    error(peek(), "Can't have more than 255 arguments.");
+                    throw error("Can't have more than 255 arguments.");
                 }
 
                 arguments.add(expression());
@@ -356,13 +344,13 @@ public class Parser {
     }
 
     private Expr call() {
-        Expr expr = primary();
+        Expr expr = this.primary();
 
         while (true) {
             if (match(LEFT_PAREN)) {
                 expr = finishCall(expr);
             } else if (match(DOT)) {
-                Token name = consume(IDENTIFIER, "Expect property name after '.'.");
+                Token name = this.consume(IDENTIFIER, "Expect property name after '.'.");
                 expr = new Expr.Get(expr, name);
             } else {
                 break;
@@ -373,100 +361,31 @@ public class Parser {
     }
 
     private Expr primary() {
-        if (match(FALSE))
-            return new Expr.Literal(false);
+        return this.match(token -> switch (token.type()) {
+            case FALSE -> new Expr.Literal(false);
+            case TRUE -> new Expr.Literal(true);
+            case NIL -> new Expr.Literal(null);
 
-        if (match(TRUE))
-            return new Expr.Literal(true);
+            case NUMBER, STRING -> new Expr.Literal(this.previous().literal());
 
-        if (match(NIL))
-            return new Expr.Literal(null);
+            case THIS -> new Expr.This(this.previous());
+            case IDENTIFIER -> new Expr.Variable(this.previous());
 
-        if (match(NUMBER, STRING)) {
-            return new Expr.Literal(previous().literal());
-        }
+            case SUPER -> {
+                Token keyword = this.previous();
+                this.consume(DOT, "Expect '.' after 'super'.");
 
-        if (match(SUPER)) {
-            Token keyword = previous();
-            consume(DOT, "Expect '.' after 'super'.");
-            Token method = consume(IDENTIFIER,
-                    "Expect superclass method name.");
-            return new Expr.Super(keyword, method);
-        }
-
-        if (match(THIS))
-            return new Expr.This(previous());
-
-        if (match(IDENTIFIER))
-            return new Expr.Variable(previous());
-
-        if (match(LEFT_PAREN)) {
-            Expr expr = expression();
-            consume(RIGHT_PAREN, "Expect ')' after expression.");
-
-            return new Expr.Grouping(expr);
-        }
-
-        throw error(peek(), "Expect expression.");
-    }
-
-    private boolean match(TokenType... types) {
-        for (TokenType type : types) {
-            if (check(type)) {
-                advance();
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private Token consume(TokenType type, String message) {
-        if (check(type)) return advance();
-
-        throw error(peek(), message);
-    }
-
-    private boolean check(TokenType type) {
-        if (isAtEnd()) return false;
-        return peek().type() == type;
-    }
-
-    private Token advance() {
-        if (!isAtEnd()) current++;
-        return previous();
-    }
-
-    private boolean isAtEnd() {
-        return peek().type() == EOF;
-    }
-
-    private Token peek() {
-        return tokens.get(current);
-    }
-
-    private Token previous() {
-        return tokens.get(current - 1);
-    }
-
-    private ParseError error(Token token, String message) {
-        Lox.error(token, message);
-        return new ParseError();
-    }
-
-    private void synchronize() {
-        advance();
-
-        while (!isAtEnd()) {
-            if (previous().type() == SEMICOLON) return;
-
-            switch (peek().type()) {
-                case CLASS, FUN, VAR, FOR, IF, WHILE, PRINT, RETURN -> {
-                    return;
-                }
+                yield new Expr.Super(keyword, this.consume(IDENTIFIER, "Expect superclass method name."));
             }
 
-            advance();
-        }
+            case LEFT_PAREN -> {
+                Expr expr = this.expression();
+                this.consume(RIGHT_PAREN, "Expect ')' after expression.");
+
+                yield new Expr.Grouping(expr);
+            }
+
+            default -> throw error("Expect expression.");
+        }, FALSE, TRUE, NIL, NUMBER, STRING, THIS, IDENTIFIER, SUPER, LEFT_PAREN);
     }
 }
