@@ -22,9 +22,9 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
     private final Map<Token, VarDef> varUse = new WeakHashMap<>();
     private final Map<Token, Integer> writes = new WeakHashMap<>();
     private final Map<Token, Integer> reads = new WeakHashMap<>();
-    private final Deque<Map<VarDef, Boolean>> scopes = new ArrayDeque<>();
-    private final Deque<Stmt.Function> functionStack = new ArrayDeque<>();
-    private final Deque<Stmt.Class> classStack = new ArrayDeque<>();
+    private final Stack<Map<VarDef, Boolean>> scopes = new Stack<>();
+    private final Stack<Stmt.Function> functionStack = new Stack<>();
+    private final Stack<Stmt.Class> classStack = new Stack<>();
     private final Map<Token, Set<VarDef>> captured = new WeakHashMap<>();
     private final Map<Token, String> javaClassNames = new WeakHashMap<>();
     private final Map<Token, String> javaFieldNames = new WeakHashMap<>();
@@ -121,7 +121,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
      */
     private Optional<VarDef> resolveLocal(Expr varAccess, Token name) {
         for (int i = scopes.size() - 1; i >= 0; i--) {
-            var varDef = scopes.get(i).keySet().stream().filter(key -> key.token.lexeme.equals(name.lexeme)).findFirst();
+            var varDef = scopes.get(i).keySet().stream().filter(key -> key.token.lexeme().equals(name.lexeme())).findFirst();
             if (varDef.isPresent()) {
                 int depth = functionStack.size() - functionStack.indexOf(varDef.get().function) - 1 /* to account for current function */;
                 if (depth != 0) {
@@ -132,7 +132,7 @@ public class CompilerResolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> 
                     }
                 }
                 varUse.put(name, varDef.get());
-                if (DEBUG) System.out.println(name.lexeme() + "@line" + name.line() + " -> " + varDef.get() + "@line" + varDef.get().token().line);
+                if (DEBUG) System.out.println(name.lexeme() + "@line" + name.line() + " -> " + varDef.get() + "@line" + varDef.get().token().line());
                 return varDef;
             }
         }

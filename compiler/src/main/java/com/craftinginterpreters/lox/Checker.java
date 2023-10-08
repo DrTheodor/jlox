@@ -3,6 +3,7 @@ package com.craftinginterpreters.lox;
 import com.craftinginterpreters.lox.ast.Expr;
 import com.craftinginterpreters.lox.ast.Stmt;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 
@@ -13,7 +14,7 @@ public class Checker implements Stmt.Visitor<Void>, Expr.Visitor<Void> {
     private ClassType currentClassType = ClassType.NONE;
     private FunctionType currentFunctionType = FunctionType.NONE;
 
-    public void execute(List<Stmt> statements) {
+    public void execute(Collection<Stmt> statements) {
         statements.forEach(it -> it.accept(this));
     }
 

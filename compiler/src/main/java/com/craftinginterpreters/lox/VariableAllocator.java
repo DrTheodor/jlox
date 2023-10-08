@@ -83,12 +83,12 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
     }
 
     private void free(Stmt.Function function, VarDef it) {
-        Map<VarDef, Slot> slot = this.slots(function).get(it);
+        Slot slot = this.slots(function).get(it);
 
         if (slot != null)
             slot.isUsed = false;
 
-        if (DEBUG) System.out.println("freeing " + it.token().lexeme + " from slot " + slot + " in function " + function.name.lexeme);
+        if (DEBUG) System.out.println("freeing " + it.token().lexeme() + " from slot " + slot + " in function " + function.getName().lexeme());
     }
 
     private void endScope(Stmt.Function ignoredFunction) {
@@ -116,19 +116,19 @@ public class VariableAllocator implements Stmt.Visitor<Void>, Expr.Visitor<Void>
         int slot = nextSlotNumber(currentFunction);
         slots(currentFunction).put(varDef, new Slot(currentFunction, slot, true));
 
-        if (DEBUG) System.out.println("assigning " + varDef + " to slot " + slot + " in " + currentFunction.name.lexeme);
+        if (DEBUG) System.out.println("assigning " + varDef + " to slot " + slot + " in " + currentFunction.getName().lexeme());
     }
 
     @Override
     public Void visitAssignExpr(Expr.Assign expr) {
-        resolve(expr.value);
+        resolve(expr.getValue());
         return null;
     }
 
     @Override
     public Void visitBinaryExpr(Expr.Binary expr) {
-        resolve(expr.left);
-        resolve(expr.right);
+        resolve(expr.getLeft());
+        resolve(expr.getRight());
         return null;
     }
 

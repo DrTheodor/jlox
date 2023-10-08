@@ -1,5 +1,7 @@
 package com.craftinginterpreters.lox;
 
+import com.craftinginterpreters.lox.ast.Expr;
+
 /**
  * Counts how many instructions that have side effects.
  * <p>

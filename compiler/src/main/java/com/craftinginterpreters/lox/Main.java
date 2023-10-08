@@ -2,7 +2,6 @@ package com.craftinginterpreters.lox;
 
 import com.craftinginterpreters.lox.ast.Stmt;
 import com.craftinginterpreters.lox.lexer.Lexer;
-import com.craftinginterpreters.lox.lexer.Scanner;
 import com.craftinginterpreters.lox.parser.Parser;
 import lox.LoxException;
 import proguard.classfile.ClassPool;

@@ -1,6 +1,8 @@
 package com.craftinginterpreters.lox;
 
 import com.craftinginterpreters.lox.CompilerResolver.VarDef;
+import com.craftinginterpreters.lox.ast.Expr;
+import com.craftinginterpreters.lox.ast.Stmt;
 import com.craftinginterpreters.lox.lexer.Token;
 import proguard.classfile.ClassPool;
 import proguard.classfile.editor.CompactCodeAttributeComposer;
@@ -194,7 +196,7 @@ public class LoxComposer extends Composer<LoxComposer> {
                     if (varDef.isCaptured()) unbox(varDef);
                 }
             },
-            () -> loxthrow("Undefined variable '" + varAccess.name.lexeme + "'.")
+            () -> loxthrow("Undefined variable '" + varAccess.getName().lexeme() + "'.")
         );
 
         return this;

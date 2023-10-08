@@ -389,18 +389,18 @@ public class Compiler {
             );
 
             classBuilder
-                .addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";" + (classStmt.superclass != null ? "L" + LOX_CLASS + ";" : "") + ")V", 65_535, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
+                .addMethod(PUBLIC, "<init>", "(L" + LOX_CALLABLE + ";" + (classStmt.getSuperclass() != null ? "L" + LOX_CLASS + ";" : "") + ")V", 65_535, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
                     .aload_0()
                     .aload_1()
-                    .also(__ -> classStmt.superclass != null ? __.aload_2() : __.aconst_null())
+                    .also(__ -> classStmt.getSuperclass() != null ? __.aload_2() : __.aconst_null())
                     .invokespecial(LOX_CLASS, "<init>", "(L" + LOX_CALLABLE + ";L" + LOX_CLASS + ";)V")
                     .also(methodInitializer -> {
-                        for (var method : classStmt.methods) {
+                        for (var method : classStmt.getMethods()) {
                             classBuilder.addField(PRIVATE | FINAL, resolver.javaFieldName(method), "L" + LOX_METHOD + ";");
                             var methodClazz = new FunctionCompiler().compile(classStmt, method);
 
                             methodInitializer
-                                .line(method.name.line)
+                                .line(method.getName().line())
                                 .aload_0()
                                 .new_(methodClazz)
                                 .dup()
@@ -414,15 +414,15 @@ public class Compiler {
                 .addMethod(PUBLIC, "findMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";", 500, composer -> new LoxComposer(composer, programClassPool, resolver, allocator)
                     .aload_1()
                     .switch_(2, switchBuilder -> {
-                        classStmt.methods.forEach(method -> switchBuilder.case_(
-                            method.name.lexeme,
+                        classStmt.getMethods().forEach(method -> switchBuilder.case_(
+                            method.getName().lexeme(),
                             caseComposer -> caseComposer
                                 .aload_0()
                                 .getfield(classBuilder.getProgramClass().getName(), resolver.javaFieldName(method), "L" + LOX_METHOD + ";")
                                 .areturn()
                         ));
                         return switchBuilder.default_(defaultComposer -> {
-                            if (classStmt.superclass == null) {
+                            if (classStmt.getSuperclass() == null) {
                                 return defaultComposer
                                         .aconst_null()
                                         .areturn();
@@ -437,7 +437,7 @@ public class Compiler {
                         });
                     }))
                 .addMethod(PUBLIC, "getName", "()Ljava/lang/String;", 10, composer -> composer
-                    .ldc(classStmt.name.lexeme)
+                    .ldc(classStmt.getName().lexeme())
                     .areturn());
 
             var clazz = classBuilder.getProgramClass();
@@ -447,7 +447,7 @@ public class Compiler {
 
         @Override
         public LoxComposer visitBlockStmt(Stmt.Block blockStmt) {
-            blockStmt.statements.forEach(stmt -> stmt.accept(this));
+            blockStmt.getStatements().forEach(stmt -> stmt.accept(this));
             return composer;
         }
 
@@ -460,11 +460,11 @@ public class Compiler {
                 .dup()
                 .aload_0();
 
-            if (classStmt.superclass != null) {
-                classStmt.superclass.accept(this);
+            if (classStmt.getSuperclass() != null) {
+                classStmt.getSuperclass().accept(this);
                 var isClass = composer.createLabel();
                 composer
-                    .line(classStmt.superclass.name.line)
+                    .line(classStmt.getSuperclass().getName().line())
                     .dup()
                     .instanceof_(LOX_CLASS)
                     .ifne(isClass)
@@ -479,14 +479,14 @@ public class Compiler {
             }
 
             return composer
-                .line(classStmt.name.line)
-                .declare(resolver.varDef(classStmt.name));
+                .line(classStmt.getName().line())
+                .declare(resolver.varDef(classStmt.getName()));
         }
 
         @Override
         public LoxComposer visitExpressionStmt(Stmt.Expression expressionStmt) {
-            expressionStmt.expression.accept(this);
-            var expectedStackSize = expressionStmt.expression.accept(new StackSizeComputer());
+            expressionStmt.getExpression().accept(this);
+            var expectedStackSize = expressionStmt.getExpression().accept(new StackSizeComputer());
             for (int i = 0; i < expectedStackSize; i++) composer.pop();
             return composer;
         }
@@ -507,8 +507,8 @@ public class Compiler {
                 .invokespecial(functionClazz.getName(), "<init>", "(L" + LOX_CALLABLE + ";)V");
 
             composer
-                .line(functionStmt.name.line)
-                .declare(resolver.varDef(functionStmt.name));
+                .line(functionStmt.getName().line())
+                .declare(resolver.varDef(functionStmt.getName()));
 
             if (capturesAnyVariables)
                 composer.invokevirtual(functionClazz.getName(), "capture", "()V");
@@ -520,19 +520,19 @@ public class Compiler {
         public LoxComposer visitIfStmt(Stmt.If stmt) {
             var endLabel = composer.createLabel();
             var elseBranch = composer.createLabel();
-            return stmt.condition.accept(this)
+            return stmt.getCondition().accept(this)
                     .ifnottruthy(elseBranch)
-                    .also(composer -> stmt.thenBranch.accept(this))
+                    .also(composer -> stmt.getThenBranch().accept(this))
                     .goto_(endLabel)
                     .label(elseBranch)
-                    .also(composer -> stmt.elseBranch != null ? stmt.elseBranch.accept(this) : composer)
+                    .also(composer -> stmt.getElseBranch() != null ? stmt.getElseBranch().accept(this) : composer)
                     .label(endLabel);
         }
 
         @Override
         public LoxComposer visitPrintStmt(Stmt.Print stmt) {
             return composer
-                .also(composer -> stmt.expression.accept(this))
+                .also(composer -> stmt.getExpression().accept(this))
                 .outline(programClassPool, LOX_MAIN_CLASS, "println", "(Ljava/lang/Object;)V", composer -> {
                     var nonNull = composer.createLabel();
                     var isObject = composer.createLabel();
@@ -597,31 +597,31 @@ public class Compiler {
 
         @Override
         public LoxComposer visitReturnStmt(Stmt.Return stmt) {
-            if (stmt.value != null)
-                return stmt.value.accept(this)
-                        .line(stmt.keyword.line)
+            if (stmt.getValue() != null)
+                return stmt.getValue().accept(this)
+                        .line(stmt.getKeyword().line())
                         .areturn();
-            else if (currentClass != null && currentFunction.name.lexeme.equals("init"))
+            else if (currentClass != null && currentFunction.getName().lexeme().equals("init"))
                 return composer
                         .aload_0()
                         .invokevirtual(LOX_METHOD, "getReceiver", "()L" + LOX_INSTANCE + ";")
-                        .line(stmt.keyword.line)
+                        .line(stmt.getKeyword().line())
                         .areturn();
             else
                 return composer
                         .aconst_null()
-                        .line(stmt.keyword.line)
+                        .line(stmt.getKeyword().line())
                         .areturn();
         }
 
         @Override
         public LoxComposer visitVarStmt(Stmt.Var stmt) {
-            if (stmt.initializer != null) stmt.initializer.accept(this);
+            if (stmt.getInitializer() != null) stmt.getInitializer().accept(this);
             else composer.aconst_null();
 
             return composer
-                    .line(stmt.name.line)
-                    .declare(resolver.varDef(stmt.name));
+                    .line(stmt.getName().line())
+                    .declare(resolver.varDef(stmt.getName()));
         }
 
         @Override
@@ -632,47 +632,47 @@ public class Compiler {
 
             return composer
                 .label(condition)
-                .also(composer -> stmt.condition.accept(this))
+                .also(composer -> stmt.getCondition().accept(this))
                 .ifnottruthy(end)
                 .label(body)
-                .also(composer -> stmt.body.accept(this))
+                .also(composer -> stmt.getBody().accept(this))
                 .goto_(condition)
                 .label(end);
         }
 
         @Override
         public LoxComposer visitAssignExpr(Expr.Assign expr) {
-            composer.line(expr.name.line);
+            composer.line(expr.getName().line());
             resolver.varDef(expr).ifPresentOrElse(
-                varDef -> expr.value
+                varDef -> expr.getValue()
                     .accept(this)
                     .dup()
-                    .line(expr.name.line)
+                    .line(expr.getName().line())
                     .store(currentFunction, varDef.token()),
-                () -> composer.loxthrow("Undefined variable '" + expr.name.lexeme + "'.")
+                () -> composer.loxthrow("Undefined variable '" + expr.getName().lexeme() + "'.")
             );
             return composer;
         }
 
         @Override
         public LoxComposer visitBinaryExpr(Expr.Binary expr) {
-            switch (expr.operator.type) {
+            switch (expr.getOperator().type()) {
                 // These don't require number operands.
                 case EQUAL_EQUAL, BANG_EQUAL, PLUS -> {
-                    expr.left.accept(this);
-                    expr.right.accept(this);
+                    expr.getLeft().accept(this);
+                    expr.getRight().accept(this);
                 }
                 // These require 2 number operands.
                 case MINUS, SLASH, STAR, GREATER, GREATER_EQUAL, LESS, LESS_EQUAL -> {
-                     expr.left.accept(this)
-                    .line(expr.operator.line)
+                     expr.getLeft().accept(this)
+                    .line(expr.getOperator().line())
                     .unbox("java/lang/Double", "Operands must be numbers.");
-                     expr.right.accept(this)
+                     expr.getRight().accept(this)
                     .unbox("java/lang/Double", "Operands must be numbers.");
                 }
             }
 
-            composer.line(expr.operator.line);
+            composer.line(expr.getOperator().line());
 
             BiFunction<String, Function<LoxComposer, LoxComposer>, LoxComposer> binaryNumberOp = (resultType, op) ->
                      op.apply(composer).box(resultType);
@@ -688,7 +688,7 @@ public class Compiler {
                          .label(end);
             });
 
-            return switch (expr.operator.type) {
+            return switch (expr.getOperator().type()) {
                 case EQUAL_EQUAL -> composer
                     .invokestatic("java/util/Objects", "equals", "(Ljava/lang/Object;Ljava/lang/Object;)Z")
                     .box("java/lang/Boolean");
@@ -795,30 +795,30 @@ public class Compiler {
                     .ifgt(label)
                 );
 
-                default -> throw new IllegalStateException("Unexpected value: " + expr.operator);
+                default -> throw new IllegalStateException("Unexpected value: " + expr.getOperator());
             };
         }
 
         @Override
         public LoxComposer visitCallExpr(Expr.Call expr) {
-            return expr.callee.accept(this)
+            return expr.getCallee().accept(this)
                 .also(composer -> {
-                    expr.arguments.forEach(it -> it.accept(this));
+                    expr.getArguments().forEach(it -> it.accept(this));
                     return composer;
                 })
-                .line(expr.paren.line)
+                .line(expr.getParen().line())
                 .invokedynamic(
                         0,
-                        "invoke", "(Ljava/lang/Object;" + ("Ljava/lang/Object;".repeat(expr.arguments.size())) + ")Ljava/lang/Object;",
+                        "invoke", "(Ljava/lang/Object;" + ("Ljava/lang/Object;".repeat(expr.getArguments().size())) + ")Ljava/lang/Object;",
                         null);
         }
 
         @Override
         public LoxComposer visitGetExpr(Expr.Get expr) {
             return composer
-                .ldc(expr.name.lexeme)
-                .also(composer -> expr.object.accept(this))
-                .line(expr.name.line)
+                .ldc(expr.getName().lexeme())
+                .also(composer -> expr.getObject().accept(this))
+                .line(expr.getName().line())
                 .outline(programClassPool, LOX_MAIN_CLASS, "get", "(Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/Object;", composer -> {
                    var notInstance = composer.createLabel();
                    var end = composer.createLabel();
@@ -843,43 +843,43 @@ public class Compiler {
 
         @Override
         public LoxComposer visitGroupingExpr(Expr.Grouping expr) {
-            return expr.expression.accept(this);
+            return expr.getExpression().accept(this);
         }
 
         @Override
         public LoxComposer visitLiteralExpr(Expr.Literal expr) {
-            if (expr.value instanceof Boolean b) {
+            if (expr.getValue() instanceof Boolean b) {
                 return b ?
                         composer.getstatic("java/lang/Boolean", "TRUE", "Ljava/lang/Boolean;") :
                         composer.getstatic("java/lang/Boolean", "FALSE", "Ljava/lang/Boolean;");
-            } else if (expr.value instanceof String s) {
+            } else if (expr.getValue() instanceof String s) {
                 return composer.ldc(s);
-            } else if (expr.value instanceof Double d) {
+            } else if (expr.getValue() instanceof Double d) {
                 return composer.pushDouble(d).box("java/lang/Double");
-            } else if (expr.value == null) {
+            } else if (expr.getValue() == null) {
                 return composer.aconst_null();
             } else {
-                throw new IllegalArgumentException("Unknown literal type: " + expr.value);
+                throw new IllegalArgumentException("Unknown literal type: " + expr.getValue());
             }
         }
 
         @Override
         public LoxComposer visitLogicalExpr(Expr.Logical expr) {
             var end = composer.createLabel();
-            return switch (expr.operator.type) {
-                case OR -> expr.left.accept(this)
+            return switch (expr.getOperator().type()) {
+                case OR -> expr.getLeft().accept(this)
                         .dup()
                         .iftruthy(end)
                         .pop()
-                        .also(composer -> expr.right.accept(this))
+                        .also(composer -> expr.getRight().accept(this))
                         .label(end);
-                case AND -> expr.left.accept(this)
+                case AND -> expr.getLeft().accept(this)
                         .dup()
                         .ifnottruthy(end)
                         .pop()
-                        .also(composer -> expr.right.accept(this))
+                        .also(composer -> expr.getRight().accept(this))
                         .label(end);
-                default -> throw new IllegalArgumentException("Unsupported logical expr type: " + expr.operator.type);
+                default -> throw new IllegalArgumentException("Unsupported logical expr type: " + expr.getOperator().type());
             };
         }
 
@@ -887,14 +887,14 @@ public class Compiler {
         public LoxComposer visitSetExpr(Expr.Set expr) {
             var notInstance = composer.createLabel();
             var end = composer.createLabel();
-            return expr.object.accept(this)
+            return expr.getObject().accept(this)
                     .dup()
                     .instanceof_(LOX_INSTANCE)
                     .ifeq(notInstance)
                     .checkcast(LOX_INSTANCE)
-                    .line(expr.name.line)
-                    .ldc(expr.name.lexeme)
-                    .also(composer1 -> expr.value.accept(this))
+                    .line(expr.getName().line())
+                    .ldc(expr.getName().lexeme())
+                    .also(composer1 -> expr.getValue().accept(this))
                     .dup_x2()
                     .invokevirtual(LOX_INSTANCE, "set", "(Ljava/lang/String;Ljava/lang/Object;)V")
                     .goto_(end)
@@ -909,7 +909,7 @@ public class Compiler {
         @Override
         public LoxComposer visitSuperExpr(Expr.Super expr) {
             composer
-                .line(expr.method.line)
+                .line(expr.getMethod().line())
                 // First get the closest method
                 .aload_0();
 
@@ -925,7 +925,7 @@ public class Compiler {
                 .dup() // thismethod, thismethod
                 // Then get the class in which the method is defined
                 .invokevirtual(LOX_METHOD, "getLoxClass", "()L" + LOX_CLASS + ";")
-                .ldc(expr.method.lexeme) // thismethod, class, fieldname
+                .ldc(expr.getMethod().lexeme()) // thismethod, class, fieldname
                 // Then find the super method
                 .invokevirtual(LOX_CLASS, "findSuperMethod", "(Ljava/lang/String;)L" + LOX_METHOD + ";") // thismethod, supermethod
                 .swap() // supermethod, thismethod
@@ -951,9 +951,9 @@ public class Compiler {
 
         @Override
         public LoxComposer visitUnaryExpr(Expr.Unary expr) {
-            composer.line(expr.operator.line);
-            expr.right.accept(this);
-            switch (expr.operator.type) {
+            composer.line(expr.getOperator().line());
+            expr.getRight().accept(this);
+            switch (expr.getOperator().type()) {
                 case BANG -> {
                     var isTruthy = composer.createLabel();
                     var end = composer.createLabel();
@@ -970,7 +970,7 @@ public class Compiler {
                         .dneg()
                         .box("java/lang/Double");
 
-                default -> throw new IllegalArgumentException("Unsupported op: " + expr.operator.type);
+                default -> throw new IllegalArgumentException("Unsupported op: " + expr.getOperator().type());
             }
 
             return composer;
@@ -979,7 +979,7 @@ public class Compiler {
         @Override
         public LoxComposer visitVariableExpr(Expr.Variable expr) {
             return composer
-                .line(expr.name.line)
+                .line(expr.getName().line())
                 .load(currentFunction, expr);
         }
     }
@@ -1036,6 +1036,7 @@ public class Compiler {
                 list
             ));
         }
+
         return Stream.concat(nativeFunctions.stream(), stmts.stream()).toList();
     }
 }
