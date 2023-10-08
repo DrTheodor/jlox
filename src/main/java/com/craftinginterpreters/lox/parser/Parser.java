@@ -2,7 +2,6 @@ package com.craftinginterpreters.lox.parser;
 
 import com.craftinginterpreters.lox.ast.Expr;
 import com.craftinginterpreters.lox.ast.Stmt;
-import com.craftinginterpreters.lox.interpreter.TokenEnumerator;
 import com.craftinginterpreters.lox.lexer.Token;
 
 import java.util.*;
@@ -55,7 +54,7 @@ public class Parser extends TokenEnumerator {
 
         if (this.match(LESS)) {
             this.consume(IDENTIFIER, "Expect superclass name.");
-            superclass = new Expr.Variable(previous());
+            superclass = new Expr.Variable(this.previous());
         }
 
         this.consume(LEFT_BRACE, "Expect '{' before class body.");
@@ -86,7 +85,7 @@ public class Parser extends TokenEnumerator {
         if (this.match(WHILE))
             return this.whileStatement();
 
-        if (match(LEFT_BRACE))
+        if (this.match(LEFT_BRACE))
             return new Stmt.Block(this.block());
 
         return this.expressionStatement();
@@ -99,27 +98,25 @@ public class Parser extends TokenEnumerator {
             case SEMICOLON -> null;
             case VAR -> this.varDeclaration();
             default -> this.expressionStatement();
-        }, SEMICOLON);
+        }, SEMICOLON, VAR);
 
         Expr condition = null;
-        if (!check(SEMICOLON)) {
-            condition = expression();
+        if (!this.check(SEMICOLON)) {
+            condition = this.expression();
         }
 
-        consume(SEMICOLON, "Expect ';' after loop condition.");
+        this.consume(SEMICOLON, "Expect ';' after loop condition.");
 
         Expr increment = null;
-        if (!check(RIGHT_PAREN)) {
-            increment = expression();
+        if (!this.check(RIGHT_PAREN)) {
+            increment = this.expression();
         }
-        consume(RIGHT_PAREN, "Expect ')' after for clauses.");
-        Stmt body = statement();
+
+        this.consume(RIGHT_PAREN, "Expect ')' after for clauses.");
+        Stmt body = this.statement();
 
         if (increment != null) {
-            body = new Stmt.Block(
-                    Arrays.asList(
-                            body,
-                            new Stmt.Expression(increment)));
+            body = new Stmt.Block(Arrays.asList(body, new Stmt.Expression(increment)));
         }
 
         if (condition == null)
@@ -135,82 +132,87 @@ public class Parser extends TokenEnumerator {
     }
 
     private Stmt ifStatement() {
-        consume(LEFT_PAREN, "Expect '(' after 'if'.");
+        this.consume(LEFT_PAREN, "Expect '(' after 'if'.");
         Expr condition = expression();
-        consume(RIGHT_PAREN, "Expect ')' after if condition.");
 
-        Stmt thenBranch = statement();
+        this.consume(RIGHT_PAREN, "Expect ')' after if condition.");
+
+        Stmt thenBranch = this.statement();
         Stmt elseBranch = null;
-        if (match(ELSE)) {
-            elseBranch = statement();
+        if (this.match(ELSE)) {
+            elseBranch = this.statement();
         }
 
         return new Stmt.If(condition, thenBranch, elseBranch);
     }
 
     private Stmt printStatement() {
-        Expr value = expression();
-        consume(SEMICOLON, "Expect ';' after value.");
+        Expr value = this.expression();
+        this.consume(SEMICOLON, "Expect ';' after value.");
+
         return new Stmt.Print(value);
     }
 
     private Stmt returnStatement() {
-        Token keyword = previous();
+        Token keyword = this.previous();
         Expr value = null;
 
-        if (!check(SEMICOLON)) {
-            value = expression();
+        if (!this.check(SEMICOLON)) {
+            value = this.expression();
         }
 
-        consume(SEMICOLON, "Expect ';' after return value.");
+        this.consume(SEMICOLON, "Expect ';' after return value.");
         return new Stmt.Return(keyword, value);
     }
 
     private Stmt varDeclaration() {
-        Token name = consume(IDENTIFIER, "Expect variable name.");
+        Token name = this.consume(IDENTIFIER, "Expect variable name.");
 
         Expr initializer = null;
-        if (match(EQUAL)) {
-            initializer = expression();
+        if (this.match(EQUAL)) {
+            initializer = this.expression();
         }
 
-        consume(SEMICOLON, "Expect ';' after variable declaration.");
+        this.consume(SEMICOLON, "Expect ';' after variable declaration.");
         return new Stmt.Var(name, initializer);
     }
 
     private Stmt whileStatement() {
-        consume(LEFT_PAREN, "Expect '(' after 'while'.");
-        Expr condition = expression();
-        consume(RIGHT_PAREN, "Expect ')' after condition.");
-        Stmt body = statement();
+        this.consume(LEFT_PAREN, "Expect '(' after 'while'.");
+        Expr condition = this.expression();
+
+        this.consume(RIGHT_PAREN, "Expect ')' after condition.");
+        Stmt body = this.statement();
 
         return new Stmt.While(condition, body);
     }
 
     private Stmt expressionStatement() {
-        Expr expr = expression();
-        consume(SEMICOLON, "Expect ';' after expression.");
+        Expr expr = this.expression();
+        this.consume(SEMICOLON, "Expect ';' after expression.");
+
         return new Stmt.Expression(expr);
     }
 
+    // TODO: replace `String kind` with an enum or even a bool
     private Stmt.Function function(String kind) {
-        Token name = consume(IDENTIFIER, "Expect " + kind + " name.");
-        consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
+        Token name = this.consume(IDENTIFIER, "Expect " + kind + " name.");
+        this.consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
 
         Set<Token> parameters = new HashSet<>();
 
-        if (!check(RIGHT_PAREN)) {
+        if (!this.check(RIGHT_PAREN)) {
             do {
                 if (parameters.size() >= 255) {
                     throw error("Can't have more than 255 parameters.");
                 }
 
-                parameters.add(consume(IDENTIFIER, "Expect parameter name."));
-            } while (match(COMMA));
+                parameters.add(this.consume(IDENTIFIER, "Expect parameter name."));
+            } while (this.match(COMMA));
         }
 
-        consume(RIGHT_PAREN, "Expect ')' after parameters.");
-        consume(LEFT_BRACE, "Expect '{' before " + kind + " body.");
+        this.consume(RIGHT_PAREN, "Expect ')' after parameters.");
+        this.consume(LEFT_BRACE, "Expect '{' before " + kind + " body.");
 
         return new Stmt.Function(name, parameters, block());
     }
@@ -218,24 +220,26 @@ public class Parser extends TokenEnumerator {
     private Collection<Stmt> block() {
         Collection<Stmt> statements = new ArrayList<>();
 
-        while (!check(RIGHT_BRACE) && !isAtEnd()) {
-            statements.add(declaration());
+        while (!this.check(RIGHT_BRACE) && !this.isAtEnd()) {
+            statements.add(this.declaration());
         }
 
-        consume(RIGHT_BRACE, "Expect '}' after block.");
+        this.consume(RIGHT_BRACE, "Expect '}' after block.");
         return statements;
     }
 
     private Expr assignment() {
-        Expr expr = or();
+        Expr expr = this.or();
 
-        if (match(EQUAL)) {
-            Token equals = previous();
-            Expr value = assignment();
+        if (this.match(EQUAL)) {
+            Token equals = this.previous();
+            Expr value = this.assignment();
 
             if (expr instanceof Expr.Variable variable) {
                 return new Expr.Assign(variable.getName(), value);
-            } else if (expr instanceof Expr.Get get) {
+            }
+
+            if (expr instanceof Expr.Get get) {
                 return new Expr.Set(get.getObject(), get.getName(), value);
             }
 
@@ -246,11 +250,12 @@ public class Parser extends TokenEnumerator {
     }
 
     private Expr or() {
-        Expr expr = and();
+        Expr expr = this.and();
 
-        while (match(OR)) {
-            Token operator = previous();
-            Expr right = and();
+        while (this.match(OR)) {
+            Token operator = this.previous();
+            Expr right = this.and();
+
             expr = new Expr.Logical(expr, operator, right);
         }
 
@@ -258,11 +263,12 @@ public class Parser extends TokenEnumerator {
     }
 
     private Expr and() {
-        Expr expr = equality();
+        Expr expr = this.equality();
 
-        while (match(AND)) {
-            Token operator = previous();
-            Expr right = equality();
+        while (this.match(AND)) {
+            Token operator = this.previous();
+            Expr right = this.equality();
+
             expr = new Expr.Logical(expr, operator, right);
         }
 
@@ -270,11 +276,12 @@ public class Parser extends TokenEnumerator {
     }
 
     private Expr equality() {
-        Expr expr = comparison();
+        Expr expr = this.comparison();
 
-        while (match(BANG_EQUAL, EQUAL_EQUAL)) {
-            Token operator = previous();
-            Expr right = comparison();
+        while (this.match(BANG_EQUAL, EQUAL_EQUAL)) {
+            Token operator = this.previous();
+            Expr right = this.comparison();
+
             expr = new Expr.Binary(expr, operator, right);
         }
 
@@ -282,11 +289,12 @@ public class Parser extends TokenEnumerator {
     }
 
     private Expr comparison() {
-        Expr expr = term();
+        Expr expr = this.term();
 
-        while (match(GREATER, GREATER_EQUAL, LESS, LESS_EQUAL)) {
-            Token operator = previous();
-            Expr right = term();
+        while (this.match(GREATER, GREATER_EQUAL, LESS, LESS_EQUAL)) {
+            Token operator = this.previous();
+            Expr right = this.term();
+
             expr = new Expr.Binary(expr, operator, right);
         }
 
@@ -294,11 +302,12 @@ public class Parser extends TokenEnumerator {
     }
 
     private Expr term() {
-        Expr expr = factor();
+        Expr expr = this.factor();
 
-        while (match(MINUS, PLUS)) {
-            Token operator = previous();
-            Expr right = factor();
+        while (this.match(MINUS, PLUS)) {
+            Token operator = this.previous();
+            Expr right = this.factor();
+
             expr = new Expr.Binary(expr, operator, right);
         }
 
@@ -306,11 +315,12 @@ public class Parser extends TokenEnumerator {
     }
 
     private Expr factor() {
-        Expr expr = unary();
+        Expr expr = this.unary();
 
-        while (match(SLASH, STAR)) {
-            Token operator = previous();
-            Expr right = unary();
+        while (this.match(SLASH, STAR)) {
+            Token operator = this.previous();
+            Expr right = this.unary();
+
             expr = new Expr.Binary(expr, operator, right);
         }
 
@@ -318,25 +328,27 @@ public class Parser extends TokenEnumerator {
     }
 
     private Expr unary() {
-        if (match(BANG, MINUS)) {
-            Token operator = previous();
-            Expr right = unary();
+        if (this.match(BANG, MINUS)) {
+            Token operator = this.previous();
+            Expr right = this.unary();
+
             return new Expr.Unary(operator, right);
         }
 
-        return call();
+        return this.call();
     }
 
     private Expr finishCall(Expr callee) {
-        Set<Expr> arguments = new HashSet<>();
-        if (!check(RIGHT_PAREN)) {
+        List<Expr> arguments = new ArrayList<>();
+
+        if (!this.check(RIGHT_PAREN)) {
             do {
                 if (arguments.size() >= 255) {
                     throw error("Can't have more than 255 arguments.");
                 }
 
-                arguments.add(expression());
-            } while (match(COMMA));
+                arguments.add(this.expression());
+            } while (this.match(COMMA));
         }
 
         Token paren = consume(RIGHT_PAREN, "Expect ')' after arguments.");
@@ -347,14 +359,18 @@ public class Parser extends TokenEnumerator {
         Expr expr = this.primary();
 
         while (true) {
-            if (match(LEFT_PAREN)) {
+            if (this.match(LEFT_PAREN)) {
                 expr = finishCall(expr);
-            } else if (match(DOT)) {
+                continue;
+            }
+
+            if (this.match(DOT)) {
                 Token name = this.consume(IDENTIFIER, "Expect property name after '.'.");
                 expr = new Expr.Get(expr, name);
-            } else {
-                break;
+                continue;
             }
+
+            break;
         }
 
         return expr;

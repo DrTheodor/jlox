@@ -1,6 +1,7 @@
 package com.craftinginterpreters.lox;
 
 import com.craftinginterpreters.lox.CompilerResolver.VarDef;
+import com.craftinginterpreters.lox.ast.Expr;
 import com.craftinginterpreters.lox.ast.Stmt;
 import com.craftinginterpreters.lox.lexer.Token;
 import lox.LoxNative;
@@ -29,6 +30,7 @@ import java.io.DataInputStream;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -60,13 +62,13 @@ import static proguard.classfile.util.ClassUtil.internalClassName;
 public class Compiler {
 
     private static final boolean DEBUG = System.getProperty("jlox.compiler.debug") != null;
+
     private final ClassPool programClassPool = new ClassPool();
     private final CompilerResolver resolver = new CompilerResolver();
-    private final VariableAllocator allocator = new VariableAllocator(resolver);
-
+    private final VariableAllocator allocator = new VariableAllocator(this.resolver);
 
     public @Nullable ClassPool compile(Collection<Stmt> program) {
-        addClass(
+        Compiler.addClass(
             programClassPool,
             lox.LoxCallable.class,
             lox.LoxCaptured.class,
@@ -79,23 +81,24 @@ public class Compiler {
             lox.LoxNative.class
         );
 
-        var mainFunction = new Stmt.Function(
-            new Token(FUN, LOX_MAIN_CLASS, null, 0),
-            emptyList(),
-            prependNative(program)
+        Stmt.Function mainFunction = new Stmt.Function(
+                new Token(FUN, LOX_MAIN_CLASS, null, 0),
+                Collections.emptyList(), this.prependNative(program)
         );
 
-        resolver.resolve(mainFunction);
+        this.resolver.resolve(mainFunction);
 
-        if (hadError || hadRuntimeError) return null;
+        if (hadError || hadRuntimeError)
+            return null;
 
-        mainFunction = new Optimizer(resolver).execute(mainFunction, 3);
+        mainFunction = new Optimizer(this.resolver).execute(mainFunction, 3);
 
-        if (hadError || hadRuntimeError) return null;
+        if (hadError || hadRuntimeError)
+            return null;
 
-        allocator.resolve(mainFunction);
+        this.allocator.resolve(mainFunction);
 
-        var mainMethodClass = new FunctionCompiler().compile(mainFunction);
+        ProgramClass mainMethodClass = new FunctionCompiler().compile(mainFunction);
 
         new ClassBuilder(mainMethodClass)
             .addMethod(PUBLIC | STATIC, "main", "([Ljava/lang/String;)V", 65_535, composer -> {
@@ -103,42 +106,43 @@ public class Compiler {
                 var error = loxComposer.createLabel();
                 //noinspection unchecked
                 loxComposer
-                    .try_(it -> it
-                        .new_(it.getTargetClass().getName())
-                        .dup()
-                        .aconst_null()
-                        .invokespecial(it.getTargetClass().getName(), "<init>", "(L" + LOX_CALLABLE + ";)V")
-                        .aconst_null()
-                        .invokeinterface(LOX_CALLABLE, "invoke", "([Ljava/lang/Object;)Ljava/lang/Object;")
-                        .pop()
-                        .return_(),
-                     __ -> __
+                    .try_(it -> it.new_(it.getTargetClass().getName()).dup().aconst_null()
+                            .invokespecial(it.getTargetClass().getName(), "<init>",
+                                    "(L" + LOX_CALLABLE + ";)V"
+                            ).aconst_null().invokeinterface(LOX_CALLABLE, "invoke",
+                                    "([Ljava/lang/Object;)Ljava/lang/Object;"
+                            ).pop().return_(), __ -> __
                     .catch_("java/lang/StackOverflowError", it -> {
-                        if (!DEBUG) it.pop();
-                        if (DEBUG) it.invokevirtual("java/lang/Throwable", "printStackTrace", "()V");
-                         it.getstatic("java/lang/System", "err", "Ljava/io/PrintStream;")
-                        .ldc("Stack overflow.")
-                        .invokevirtual("java/io/PrintStream", "println", "(Ljava/lang/Object;)V")
-                        .goto_(error);
-                         return it;
+                        if (!DEBUG)
+                            it.pop();
+
+                        if (DEBUG)
+                            it.invokevirtual("java/lang/Throwable", "printStackTrace", "()V");
+
+                        return it.getstatic("java/lang/System", "err", "Ljava/io/PrintStream;")
+                                .ldc("Stack overflow.").invokevirtual("java/io/PrintStream",
+                                        "println", "(Ljava/lang/Object;)V"
+                                ).goto_(error);
                     }).catchAll(it -> {
-                        if (DEBUG) it.dup();
-                        it.getstatic("java/lang/System", "err", "Ljava/io/PrintStream;")
-                          .swap()
+                        if (DEBUG)
+                            it.dup();
+
+                        it.getstatic("java/lang/System", "err", "Ljava/io/PrintStream;").swap()
                           .invokevirtual("java/lang/Throwable", "getMessage", "()Ljava/lang/String;")
                           .invokevirtual("java/io/PrintStream", "println", "(Ljava/lang/Object;)V");
-                        if (DEBUG) it.invokevirtual("java/lang/Throwable", "printStackTrace", "()V");
+
+                        if (DEBUG)
+                            it.invokevirtual("java/lang/Throwable", "printStackTrace", "()V");
+
                         return it.goto_(error);
                     }))
-                    .label(error)
-                    .iconst(70)
-                    .invokestatic("java/lang/System", "exit", "(I)V")
-                    .return_();
+                    .label(error).iconst(70).invokestatic("java/lang/System",
+                                "exit", "(I)V").return_();
                 });
 
-        programClassPool.addClass(mainMethodClass);
+        this.programClassPool.addClass(mainMethodClass);
 
-        ClassPool classPool = preverify(programClassPool);
+        ClassPool classPool = this.preverify(this.programClassPool);
         if (DEBUG) classPool.classesAccept("!lox/**", new ClassPrinter());
         return classPool;
     }
@@ -146,16 +150,11 @@ public class Compiler {
     private ClassPool preverify(ClassPool programClassPool) {
         programClassPool.classesAccept(clazz -> {
             try {
-                clazz.accept(
-                    new ClassVersionFilter(CLASS_VERSION_1_8,
-                    new AllMethodVisitor(
-                    new AllAttributeVisitor(
-                    new AttributeNameFilter(Attribute.CODE,
-                    new MultiAttributeVisitor(
-                    new CodePreverifier(false),
-                    // TODO: see local_mutual_recursion.loxisEven;
-                    //  unreachable code is removed by CodePreverifier and the line numbers are not updated
-                    new AllAttributeVisitor(new LineNumberTableAttributeTrimmer())))))));
+                clazz.accept(new ClassVersionFilter(CLASS_VERSION_1_8,
+                    new AllMethodVisitor(new AllAttributeVisitor(new AttributeNameFilter(
+                            Attribute.CODE, new MultiAttributeVisitor(new CodePreverifier(false),
+                            new AllAttributeVisitor(new LineNumberTableAttributeTrimmer()))))))
+                ); // TODO: see local_mutual_recursion.loxisEven; unreachable code is removed by CodePreverifier and the line numbers are not updated
             } catch (Exception e) {
                 clazz.accept(new ClassPrinter());
                 throw e;
@@ -176,39 +175,41 @@ public class Compiler {
         }
 
         private ProgramClass compile(Stmt.Class classStmt, Stmt.Function functionStmt) {
-            currentFunction = functionStmt;
-            currentClass = classStmt;
-            var programClass = createFunctionClass(classStmt, functionStmt);
-            var invokeMethod = (ProgramMethod) programClass.findMethod("invoke", null);
-            composer = new LoxComposer(new CompactCodeAttributeComposer(programClass), programClassPool, resolver, allocator);
-            composer.beginCodeFragment(65_535);
+            this.currentFunction = functionStmt;
+            this.currentClass = classStmt;
 
-            var params = functionStmt.params
+            ProgramClass programClass = this.createFunctionClass(classStmt, functionStmt);
+            ProgramMethod invokeMethod = (ProgramMethod) programClass.findMethod("invoke", null);
+
+            this.composer = new LoxComposer(new CompactCodeAttributeComposer(programClass), programClassPool, resolver, allocator);
+            this.composer.beginCodeFragment(65_535);
+
+            var params = functionStmt.getParams()
                 .stream()
                 .map(resolver::varDef)
                 .toList();
 
             if (functionStmt instanceof NativeFunction) {
-                if (!params.isEmpty()) composer
-                    .aload_1()
-                    .unpack(params.size());
+                if (!params.isEmpty()) {
+                    this.composer.aload_1().unpack(params.size());
+                }
 
-                composer
-                    .invokestatic(LOX_NATIVE, functionStmt.name.lexeme, "(" + "Ljava/lang/Object;".repeat(functionStmt.params.size()) + ")Ljava/lang/Object;")
-                    .areturn();
+                this.composer.invokestatic(LOX_NATIVE, functionStmt.getName().lexeme(), "(Ljava/lang/Object;"
+                                .repeat(functionStmt.getParams().size()) + ")Ljava/lang/Object;").areturn();
             } else {
                 if (params.stream().anyMatch(VarDef::isRead)) {
-                    composer.aload_1();
+                    this.composer.aload_1();
                     for (int i = 0; i < params.size(); i++) {
                         if (params.get(i).isRead()) {
-                            composer
+                            this.composer
                                 .dup() // the param array
                                 .pushInt(i)
                                 .aaload()
                                 .declare(params.get(i));
                         }
                     }
-                    composer.pop();
+
+                    this.composer.pop();
                 }
 
                 resolver
@@ -222,12 +223,12 @@ public class Compiler {
                         .astore(allocator.slot(functionStmt, captured))
                     );
 
-                functionStmt.body.forEach(
+                functionStmt.getBody().forEach(
                     stmt -> stmt.accept(this)
                 );
 
-                if (functionStmt.body.stream().noneMatch(stmt -> stmt instanceof Stmt.Return)) {
-                    if (classStmt != null && functionStmt.name.lexeme.equals("init")) {
+                if (functionStmt.getBody().stream().noneMatch(stmt -> stmt instanceof Stmt.Return)) {
+                    if (classStmt != null && functionStmt.getName().lexeme().equals("init")) {
                         composer
                             .aload_0()
                             .invokevirtual(LOX_METHOD, "getReceiver", "()L" + LOX_INSTANCE + ";")
@@ -260,10 +261,10 @@ public class Compiler {
                 isMethod ? LOX_METHOD : LOX_FUNCTION
             )
             .addMethod(PUBLIC, "getName", "()Ljava/lang/String;", 10, composer -> composer
-                .ldc(function.name.lexeme)
+                .ldc(function.getName().lexeme())
                 .areturn())
             .addMethod(PUBLIC, "arity", "()I", 10, composer -> composer
-                .pushInt(function.params.size())
+                .pushInt(function.getParams().size())
                 .ireturn())
             .addMethod(PUBLIC | VARARGS, "invoke", "([Ljava/lang/Object;)Ljava/lang/Object;");
 
@@ -1017,12 +1018,13 @@ public class Compiler {
 
 
     public static class NativeFunction extends Stmt.Function {
-        NativeFunction(Token name, List<Token> params) {
+
+        NativeFunction(Token name, Collection<Token> params) {
             super(name, params, emptyList());
         }
     }
 
-    private List<Stmt> prependNative(List<Stmt> stmts) {
+    private Collection<Stmt> prependNative(Collection<Stmt> stmts) {
         var nativeFunctions = new ArrayList<Stmt>();
         for (Method declaredMethod : LoxNative.class.getDeclaredMethods()) {
             var list = new ArrayList<Token>();

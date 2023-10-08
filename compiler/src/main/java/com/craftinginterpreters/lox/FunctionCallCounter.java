@@ -1,5 +1,8 @@
 package com.craftinginterpreters.lox;
 
+import com.craftinginterpreters.lox.ast.Expr;
+import com.craftinginterpreters.lox.ast.Stmt;
+
 /**
  * Counts how many function calls there are.
  * <p>
@@ -8,41 +11,40 @@ package com.craftinginterpreters.lox;
 public class FunctionCallCounter implements Expr.Visitor<Integer>, Stmt.Visitor<Integer> {
 
     public int count(Stmt.Function functionStmt) {
-        return functionStmt.body
-            .stream()
-            .mapToInt(it -> it.accept(this))
-            .sum();
+        return functionStmt.getBody()
+                .stream()
+                .mapToInt(it -> it.accept(this))
+                .sum();
     }
 
     @Override
     public Integer visitAssignExpr(Expr.Assign expr) {
-        return expr.value.accept(this);
+        return expr.getValue().accept(this);
     }
 
     @Override
     public Integer visitBinaryExpr(Expr.Binary expr) {
-        return expr.left.accept(this)
-            + expr.right.accept(this);
+        return expr.getLeft().accept(this) + expr.getRight().accept(this);
     }
 
     @Override
     public Integer visitCallExpr(Expr.Call expr) {
-        return expr.arguments
-            .stream()
-            .mapToInt(it -> it.accept(this))
-            .sum()
-            + expr.callee.accept(this)
-            + 1;
+        return expr.getArguments()
+                .stream()
+                .mapToInt(it -> it.accept(this))
+                .sum()
+                + expr.getCallee().accept(this)
+                + 1;
     }
 
     @Override
     public Integer visitGetExpr(Expr.Get expr) {
-        return expr.object.accept(this);
+        return expr.getObject().accept(this);
     }
 
     @Override
     public Integer visitGroupingExpr(Expr.Grouping expr) {
-        return expr.expression.accept(this);
+        return expr.getExpression().accept(this);
     }
 
     @Override
@@ -52,14 +54,14 @@ public class FunctionCallCounter implements Expr.Visitor<Integer>, Stmt.Visitor<
 
     @Override
     public Integer visitLogicalExpr(Expr.Logical expr) {
-        return expr.left.accept(this)
-            + expr.right.accept(this);
+        return expr.getLeft().accept(this)
+                + expr.getRight().accept(this);
     }
 
     @Override
     public Integer visitSetExpr(Expr.Set expr) {
-        return expr.object.accept(this)
-            + expr.value.accept(this);
+        return expr.getObject().accept(this)
+                + expr.getValue().accept(this);
     }
 
     @Override
@@ -74,7 +76,7 @@ public class FunctionCallCounter implements Expr.Visitor<Integer>, Stmt.Visitor<
 
     @Override
     public Integer visitUnaryExpr(Expr.Unary expr) {
-        return expr.right.accept(this);
+        return expr.getRight().accept(this);
     }
 
     @Override
@@ -84,10 +86,10 @@ public class FunctionCallCounter implements Expr.Visitor<Integer>, Stmt.Visitor<
 
     @Override
     public Integer visitBlockStmt(Stmt.Block stmt) {
-        return stmt.statements
-            .stream()
-            .mapToInt(it -> it.accept(this))
-            .sum();
+        return stmt.getStatements()
+                .stream()
+                .mapToInt(it -> it.accept(this))
+                .sum();
     }
 
     @Override
@@ -97,7 +99,7 @@ public class FunctionCallCounter implements Expr.Visitor<Integer>, Stmt.Visitor<
 
     @Override
     public Integer visitExpressionStmt(Stmt.Expression stmt) {
-        return stmt.expression.accept(this);
+        return stmt.getExpression().accept(this);
     }
 
     @Override
@@ -107,29 +109,28 @@ public class FunctionCallCounter implements Expr.Visitor<Integer>, Stmt.Visitor<
 
     @Override
     public Integer visitIfStmt(Stmt.If stmt) {
-        return stmt.condition.accept(this)
-            + stmt.thenBranch.accept(this)
-            + (stmt.elseBranch != null ? stmt.elseBranch.accept(this) : 0);
+        return stmt.getCondition().accept(this)
+                + stmt.getThenBranch().accept(this)
+                + (stmt.getElseBranch() != null ? stmt.getElseBranch().accept(this) : 0);
     }
 
     @Override
     public Integer visitPrintStmt(Stmt.Print stmt) {
-        return stmt.expression.accept(this);
+        return stmt.getExpression().accept(this);
     }
 
     @Override
     public Integer visitReturnStmt(Stmt.Return stmt) {
-        return stmt.value != null ? stmt.value.accept(this) : 0;
+        return stmt.getValue() != null ? stmt.getValue().accept(this) : 0;
     }
 
     @Override
     public Integer visitVarStmt(Stmt.Var stmt) {
-        return stmt.initializer != null ? stmt.initializer.accept(this) : 0;
+        return stmt.getInitializer() != null ? stmt.getInitializer().accept(this) : 0;
     }
 
     @Override
     public Integer visitWhileStmt(Stmt.While stmt) {
-        return stmt.condition.accept(this)
-            + stmt.body.accept(this);
+        return stmt.getCondition().accept(this) + stmt.getBody().accept(this);
     }
 }

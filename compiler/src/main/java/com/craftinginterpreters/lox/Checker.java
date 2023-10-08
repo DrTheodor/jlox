@@ -6,11 +6,10 @@ import com.craftinginterpreters.lox.ast.Stmt;
 import java.util.List;
 import java.util.Objects;
 
-
 import static com.craftinginterpreters.lox.Lox.error;
 
-
 public class Checker implements Stmt.Visitor<Void>, Expr.Visitor<Void> {
+
     private ClassType currentClassType = ClassType.NONE;
     private FunctionType currentFunctionType = FunctionType.NONE;
 
@@ -19,10 +18,11 @@ public class Checker implements Stmt.Visitor<Void>, Expr.Visitor<Void> {
     }
 
     private void checkFunction(Stmt.Function function, FunctionType type) {
-        var enclosingFunctionType = currentFunctionType;
-        currentFunctionType = type;
+        FunctionType enclosingFunctionType = currentFunctionType;
+        this.currentFunctionType = type;
+
         function.getBody().forEach(it -> it.accept(this));
-        currentFunctionType = enclosingFunctionType;
+        this.currentFunctionType = enclosingFunctionType;
     }
 
     @Override
@@ -78,10 +78,14 @@ public class Checker implements Stmt.Visitor<Void>, Expr.Visitor<Void> {
 
     @Override
     public Void visitSuperExpr(Expr.Super expr) {
-        if (currentClassType == ClassType.NONE) {
+        if (this.currentClassType == ClassType.NONE) {
             error(expr.getKeyword(), "Can't use 'super' outside of a class.");
-        } else if (currentClassType != ClassType.SUBCLASS) {
+            return null;
+        }
+
+        if (this.currentClassType != ClassType.SUBCLASS) {
             error(expr.getKeyword(), "Can't use 'super' in a class with no superclass.");
+            return null;
         }
 
         return null;
@@ -89,7 +93,7 @@ public class Checker implements Stmt.Visitor<Void>, Expr.Visitor<Void> {
 
     @Override
     public Void visitThisExpr(Expr.This expr) {
-        if (currentClassType == ClassType.NONE) {
+        if (this.currentClassType == ClassType.NONE) {
             error(expr.getKeyword(), "Can't use 'this' outside of a class.");
         }
 
@@ -115,11 +119,11 @@ public class Checker implements Stmt.Visitor<Void>, Expr.Visitor<Void> {
 
     @Override
     public Void visitClassStmt(Stmt.Class stmt) {
-        var enclosingClass = currentClassType;
-        currentClassType = ClassType.CLASS;
+        ClassType enclosingClass = this.currentClassType;
+        this.currentClassType = ClassType.CLASS;
 
         if (stmt.getSuperclass() != null) {
-            currentClassType = ClassType.SUBCLASS;
+            this.currentClassType = ClassType.SUBCLASS;
             if (Objects.equals(stmt.getName().lexeme(), stmt.getSuperclass().getName().lexeme())) {
                 error(stmt.getSuperclass().getName(), "A class can't inherit from itself.");
             }
@@ -127,8 +131,11 @@ public class Checker implements Stmt.Visitor<Void>, Expr.Visitor<Void> {
             stmt.getSuperclass().accept(this);
         }
 
-        stmt.getMethods().forEach(it -> checkFunction(it, it.getName().lexeme().equals("init") ? FunctionType.INIT : FunctionType.METHOD));
-        currentClassType = enclosingClass;
+        stmt.getMethods().forEach(it -> this.checkFunction(it, it.getName().lexeme().equals("init")
+                ? FunctionType.INIT : FunctionType.METHOD)
+        );
+
+        this.currentClassType = enclosingClass;
         return null;
     }
 
@@ -140,7 +147,7 @@ public class Checker implements Stmt.Visitor<Void>, Expr.Visitor<Void> {
 
     @Override
     public Void visitFunctionStmt(Stmt.Function stmt) {
-        checkFunction(stmt, FunctionType.FUNCTION);
+        this.checkFunction(stmt, FunctionType.FUNCTION);
         return null;
     }
 
@@ -164,12 +171,19 @@ public class Checker implements Stmt.Visitor<Void>, Expr.Visitor<Void> {
     @Override
     public Void visitReturnStmt(Stmt.Return returnStmt) {
         if (returnStmt.getValue() != null) {
-            if (currentFunctionType == FunctionType.NONE) {
+            if (this.currentFunctionType == FunctionType.NONE) {
                 error(returnStmt.getKeyword(), "Can't return from top-level code.");
-            } else if (currentFunctionType == FunctionType.INIT) {
+                return null;
+            }
+
+            if (this.currentFunctionType == FunctionType.INIT) {
                 error(returnStmt.getKeyword(), "Can't return a value from an initializer.");
-            } else returnStmt.getValue().accept(this);
+                return null;
+            }
+
+            returnStmt.getValue().accept(this);
         }
+
         return null;
     }
 

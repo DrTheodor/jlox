@@ -160,7 +160,7 @@ public class Interpreter implements Expr.Visitor<Object>, Stmt.Visitor<Void> {
             value = evaluate(stmt.getInitializer());
         }
 
-        environment.define(stmt.getName().lexeme(), value);
+        environment.define(stmt, value);
         return null;
     }
 

@@ -1,13 +1,10 @@
-package com.craftinginterpreters.lox.interpreter;
+package com.craftinginterpreters.lox.parser;
 
 import com.craftinginterpreters.lox.Lox;
 import com.craftinginterpreters.lox.lexer.Token;
 import com.craftinginterpreters.lox.lexer.TokenType;
-import com.craftinginterpreters.lox.parser.Parser;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static com.craftinginterpreters.lox.lexer.TokenType.EOF;
@@ -35,14 +32,9 @@ public class TokenEnumerator {
 
     protected <R> R match(Function<Token, R> consumer, TokenType... types) {
         Token token = this.peek();
-        for (TokenType type : types) {
-            if (this.check(type)) {
-                this.advance();
-                return consumer.apply(token);
-            }
-        }
+        this.match(types);
 
-        return null;
+        return consumer.apply(token);
     }
 
     protected Token consume(TokenType type, String message) {

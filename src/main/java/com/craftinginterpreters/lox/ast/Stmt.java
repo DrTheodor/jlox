@@ -18,6 +18,7 @@ public abstract class Stmt {
     }
 
     public static class Block extends Stmt {
+
         private final Collection<Stmt> statements;
 
         public Block(Collection<Stmt> statements) {
